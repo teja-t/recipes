@@ -6,6 +6,7 @@ and saves them to a CSV file.
 """
 
 import csv
+import html
 import json
 import re
 import time
@@ -54,13 +55,29 @@ class HTMLListParser(HTMLParser):
                 self._current.append(chr(int(name)))
 
 
+def parse_details_fallback(body_html):
+    """Extract text from paragraph-based HTML (older listing format using <p>/<span>/<br>)."""
+    # Treat <br> and end of <p> as segment separators
+    text = re.sub(r"<br\s*/?>", "\n", body_html, flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n", text, flags=re.IGNORECASE)
+    # Strip remaining HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Decode HTML entities and normalize non-breaking spaces
+    text = html.unescape(text).replace("\xa0", " ")
+    segments = [s.strip() for s in text.split("\n")]
+    return " | ".join(s for s in segments if s)
+
+
 def parse_details(body_html):
     """Extract bullet-point details from product HTML body."""
     if not body_html:
         return ""
     parser = HTMLListParser()
     parser.feed(body_html)
-    return " | ".join(parser.items)
+    if parser.items:
+        return " | ".join(parser.items)
+    # Older listings use <p>/<span>/<br> instead of <ul>/<li>
+    return parse_details_fallback(body_html)
 
 
 def parse_serial_number(title):
