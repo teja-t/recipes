@@ -23,6 +23,8 @@ import jwt
 import requests
 from cryptography.hazmat.primitives.asymmetric import ec
 
+import fx
+
 logger = logging.getLogger(__name__)
 
 SOURCE = "mercari_jp"
@@ -37,14 +39,6 @@ USER_AGENT = (
 _key: ec.EllipticCurvePrivateKey | None = None
 _jwk: dict | None = None
 _key_lock = Lock()
-
-# Naive USD/JPY rate cache. Refreshed on first use; falls back to a hardcoded
-# rate if the FX endpoint is unreachable. Bunjang will share the same pattern
-# via its own KRW pair when we get to Step 6.
-_FX_FALLBACK_USD_PER_JPY = 1.0 / 150.0
-_fx_cache: dict[str, tuple[float, float]] = {}  # symbol -> (rate, fetched_at)
-_FX_TTL_SECONDS = 60 * 60 * 12
-
 
 @dataclass
 class Listing:
@@ -83,21 +77,6 @@ def _dpop(method: str, url: str) -> str:
         algorithm="ES256",
         headers={"typ": "dpop+jwt", "jwk": jwk_pub},
     )
-
-
-def _usd_per_jpy(timeout: int = 5) -> float:
-    cached = _fx_cache.get("JPY")
-    if cached and (time.time() - cached[1]) < _FX_TTL_SECONDS:
-        return cached[0]
-    try:
-        r = requests.get("https://open.er-api.com/v6/latest/JPY", timeout=timeout)
-        r.raise_for_status()
-        rate = float(r.json()["rates"]["USD"])
-        _fx_cache["JPY"] = (rate, time.time())
-        return rate
-    except (requests.RequestException, KeyError, ValueError) as e:
-        logger.warning("USD/JPY FX fetch failed (%s) — using fallback ~150 JPY/USD", e)
-        return _FX_FALLBACK_USD_PER_JPY
 
 
 def _build_search_body(keyword: str, page_size: int) -> dict:
@@ -186,7 +165,7 @@ def search(keyword: str, page_size: int = 30, timeout: int = 20) -> List[Listing
         logger.warning("Mercari search failed for %r: %s", keyword, e)
         return []
     items = data.get("items") or []
-    rate = _usd_per_jpy()
+    rate = fx.usd_per_jpy()
     out: List[Listing] = []
     for it in items:
         L = _to_listing(it, keyword, rate)
