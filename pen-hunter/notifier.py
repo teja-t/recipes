@@ -25,13 +25,19 @@ def _format_message(listing) -> str:
         f"${listing.price_usd:,.2f} USD" if getattr(listing, "price_usd", None) is not None
         else (getattr(listing, "price_raw", "") or "price unknown")
     )
-    return (
-        f"<b>{html.escape(title)}</b>\n"
-        f"{price_line}\n"
-        f"Source: {html.escape(listing.source)}\n"
-        f"Matched: {html.escape(listing.keyword)}\n"
-        f'<a href="{html.escape(listing.url, quote=True)}">View listing</a>'
-    )
+    if getattr(listing, "price_usd", None) is not None and getattr(listing, "price_raw", None) and "$" not in listing.price_raw:
+        price_line += f" ({html.escape(listing.price_raw)})"
+    parts = [f"<b>{html.escape(title)}</b>"]
+    desc_en = getattr(listing, "description_en", None)
+    if desc_en:
+        parts.append(html.escape(desc_en))
+    parts += [
+        price_line,
+        f"Source: {html.escape(listing.source)}",
+        f"Matched: {html.escape(listing.keyword)}",
+        f'<a href="{html.escape(listing.url, quote=True)}">View listing</a>',
+    ]
+    return "\n".join(parts)
 
 
 def _post(method: str, payload: dict, timeout: int = 15) -> bool:
