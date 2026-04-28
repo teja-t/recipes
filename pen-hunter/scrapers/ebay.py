@@ -100,8 +100,15 @@ def parse_rss(content: bytes, keyword: str) -> List[Listing]:
 
 
 def search(keyword: str, timeout: int = 20) -> List[Listing]:
-    """Live RSS query for one keyword. Returns [] on network or parse error."""
-    url = RSS_URL.format(query=quote_plus(keyword))
+    """Live RSS query for one keyword. Returns [] on network or parse error.
+
+    The keyword is wrapped in double-quotes before URL-encoding so eBay
+    treats it as an exact phrase. Without this, eBay's spell-corrector
+    silently rewrites unfamiliar brands (e.g. "Autmog" -> "Automag",
+    paintball gear) and the watcher would never see the right listings.
+    """
+    quoted = keyword if keyword.startswith('"') and keyword.endswith('"') else f'"{keyword}"'
+    url = RSS_URL.format(query=quote_plus(quoted))
     try:
         resp = requests.get(
             url,
